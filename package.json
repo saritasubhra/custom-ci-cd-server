@@ -1,0 +1,16 @@
+{
+  "name": "vercel-cicd-server",
+  "version": "1.0.0",
+  "description": "Custom CI/CD server that deploys projects to Vercel on GitHub push",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js"
+  },
+  "license": "ISC",
+  "dependencies": {
+    "dotenv": "^17.2.3",
+    "express": "^5.1.0"
+  }
+}
