@@ -1,0 +1,30 @@
+{
+  "projects": [
+    {
+      "name": "Noted",
+      "repository": "saritasubhra/noted",
+      "branch": "master",
+      "localPath": "C:/cicd/repos/noted",
+      "components": [
+        {
+          "name": "Client",
+          "path": "client/",
+          "vercel": {
+            "orgIdEnv": "VERCEL_ORG_ID",
+            "projectIdEnv": "VERCEL_PROJECT_ID_CLIENT",
+            "target": "production"
+          }
+        },
+        {
+          "name": "Server",
+          "path": "server/",
+          "vercel": {
+            "orgIdEnv": "VERCEL_ORG_ID",
+            "projectIdEnv": "VERCEL_PROJECT_ID_SERVER",
+            "target": "production"
+          }
+        }
+      ]
+    }
+  ]
+}
