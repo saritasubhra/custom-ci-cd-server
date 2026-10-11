@@ -9,6 +9,8 @@ import express from "express";
  */
 import { verifySignature } from "./middlewares/verifySignature.js";
 import { loadConfig } from "./utils/loadConfig.js";
+import { runPipeline } from "./services/pipeline_service.js";
+import { createRun, getRun } from "./store/runs.js";
 
 /**
  * Configurations (validated at startup)
@@ -45,7 +47,7 @@ app.get("/health", (_, res) => {
 
 /**
  * GitHub Webhook endpoint
- * Step 2: verify, match the project, and log. Deployment comes in later steps.
+ * Verify → match project → record a run → start the pipeline
  */
 app.post("/webhook/github", verifySignature, (req, res) => {
   const event = req.headers["x-github-event"];
@@ -56,14 +58,13 @@ app.post("/webhook/github", verifySignature, (req, res) => {
   // Only push events trigger deployments
   if (event !== "push") return res.status(200).send("Ignored");
 
-  // Reply right away; the real work happens after this
+  // Reply right away; the pipeline continues in the background
   res.status(200).send("OK");
 
   const body = req.body || {};
   const repo = body.repository?.full_name;
   const branch = body.ref?.replace("refs/heads/", "");
   const commitSha = body.after;
-  const commits = body.commits || [];
 
   // Find the project that matches this repo and branch
   const project = config.projects.find(
@@ -77,11 +78,45 @@ app.post("/webhook/github", verifySignature, (req, res) => {
     return;
   }
 
+  // A deleted branch has an all-zero "after" SHA, nothing to deploy
+  if (/^0+$/.test(commitSha)) {
+    console.log(`[Webhook] Branch ${branch} was deleted, ignoring`);
+    return;
+  }
+
   console.log(
-    `[Webhook] Matched project '${project.name}' ` +
-      `(${repo}@${branch}) commit ${commitSha.slice(0, 7)} ` +
-      `with ${commits.length} commit(s)`,
+    `[Webhook] Matched project '${project.name}' (${repo}@${branch}) commit ${commitSha.slice(0, 7)}`,
   );
+
+  createRun({
+    project: project.name,
+    repository: repo,
+    branch,
+    commitSha,
+    commitMessage: body.head_commit?.message,
+    commitAuthor: body.head_commit?.author?.name,
+  });
+
+  runPipeline(project, {
+    commitSha,
+    before: body.before,
+    commits: body.commits || [],
+    cloneUrl: body.repository?.clone_url,
+  });
+});
+
+/**
+ * Get Run Details endpoint
+ * Returns the details of one run by project name and commit SHA
+ */
+app.get("/runs/:project/:sha", (req, res) => {
+  const run = getRun(req.params.project, req.params.sha);
+
+  if (!run) {
+    return res.status(404).json({ success: false, message: "Run not found" });
+  }
+
+  res.status(200).json({ success: true, ...run });
 });
 
 app.listen(PORT, () => console.log(`CI/CD Server is running on PORT ${PORT}`));

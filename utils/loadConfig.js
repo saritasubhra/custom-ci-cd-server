@@ -82,8 +82,11 @@ export const loadConfig = () => {
     for (const component of project.components) {
       const label = `${project.name}/${component.name || "(unnamed)"}`;
 
-      if (!component.name || !component.path) {
-        throw new Error(`Component '${label}' needs 'name' and 'path'`);
+      // path may be "" (the whole repo), but it must be present as a string
+      if (!component.name || typeof component.path !== "string") {
+        throw new Error(
+          `Component '${label}' needs 'name' and 'path' (use "" for the repo root)`,
+        );
       }
       if (!component.vercel) {
         throw new Error(`Component '${label}' needs a 'vercel' block`);
