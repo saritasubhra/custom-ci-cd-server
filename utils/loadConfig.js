@@ -92,6 +92,14 @@ export const loadConfig = () => {
         throw new Error(`Component '${label}' needs a 'vercel' block`);
       }
 
+      // target is "production" (default) or "preview"
+      component.vercel.target = component.vercel.target || "production";
+      if (!["production", "preview"].includes(component.vercel.target)) {
+        throw new Error(
+          `Component '${label}': vercel.target must be "production" or "preview"`,
+        );
+      }
+
       // Resolve IDs: read from the env var named in orgIdEnv / projectIdEnv
       component.vercel.orgId = resolveId(component.vercel, "orgId", label);
       component.vercel.projectId = resolveId(

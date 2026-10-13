@@ -17,6 +17,12 @@ import { createRun, getRun } from "./store/runs.js";
  */
 const config = loadConfig();
 
+if (!process.env.VERCEL_TOKEN) {
+  console.warn(
+    "[Startup] VERCEL_TOKEN is not set in .env, deployments will fail",
+  );
+}
+
 const app = express();
 const PORT = process.env.PORT || 5001;
 

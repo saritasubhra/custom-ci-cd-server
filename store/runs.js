@@ -13,7 +13,14 @@ const keyOf = (project, sha) => `${project}/${sha}`;
 /**
  * Creates a new run in "pending" state
  */
-export const createRun = ({ project, repository, branch, commitSha, commitMessage, commitAuthor }) => {
+export const createRun = ({
+  project,
+  repository,
+  branch,
+  commitSha,
+  commitMessage,
+  commitAuthor,
+}) => {
   const run = {
     project,
     repository,
@@ -21,10 +28,12 @@ export const createRun = ({ project, repository, branch, commitSha, commitMessag
     commitSha,
     commitMessage: commitMessage || null,
     commitAuthor: commitAuthor || null,
-    status: "pending", // pending → running → synced | failure
+    // pending → running → success | failure | skipped (nothing changed)
+    status: "pending",
     startedAt: new Date().toISOString(),
     finishedAt: null,
     changedFiles: [],
+    // Each: { name, path, status: pending|deploying|deployed|failed, url, error }
     components: [],
     error: null,
   };
@@ -45,6 +54,18 @@ export const updateRun = (project, sha, patch) => {
   const run = runs.get(keyOf(project, sha));
   if (run) Object.assign(run, patch);
   return run;
+};
+
+/**
+ * Updates fields on one component inside a run
+ */
+export const updateComponent = (project, sha, componentName, patch) => {
+  const component = runs
+    .get(keyOf(project, sha))
+    ?.components.find((c) => c.name === componentName);
+
+  if (component) Object.assign(component, patch);
+  return component;
 };
 
 /**
