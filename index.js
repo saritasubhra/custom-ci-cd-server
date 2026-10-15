@@ -42,11 +42,11 @@ app.use(
  * Health Check endpoint
  * Used to confirm the CI/CD server itself is running
  */
-app.get("/health", (_, res) => {
+app.get("/", (_, res) => {
   res.status(200).json({
     status: "OK",
     success: true,
-    message: "Server is healthy",
+    message: "Server is running",
     timestamp: new Date().toISOString(),
   });
 });
