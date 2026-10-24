@@ -33,7 +33,9 @@ export const createRun = ({
     startedAt: new Date().toISOString(),
     finishedAt: null,
     changedFiles: [],
-    // Each: { name, path, status: pending|deploying|deployed|failed, url, error }
+    // Each: { name, path, url, error, status } where status is one of:
+    // pending | deploying | deployed | failed | rolled-back | unhealthy | rollback-failed
+    // (unhealthy and rollback-failed mean a bad version may still be live)
     components: [],
     error: null,
   };

@@ -100,6 +100,41 @@ export const loadConfig = () => {
         );
       }
 
+      // Optional health check: { url, expectedStatus, timeout, retries, delay }
+      if (component.healthCheck !== undefined) {
+        const hc = component.healthCheck;
+        let validUrl = false;
+
+        try {
+          validUrl = ["http:", "https:"].includes(new URL(hc.url).protocol);
+        } catch {
+          validUrl = false;
+        }
+
+        if (!validUrl) {
+          throw new Error(
+            `Component '${label}': healthCheck.url must be a full http(s) address`,
+          );
+        }
+
+        for (const field of ["expectedStatus", "timeout", "retries", "delay"]) {
+          if (
+            hc[field] !== undefined &&
+            (!Number.isInteger(hc[field]) || hc[field] < 0)
+          ) {
+            throw new Error(
+              `Component '${label}': healthCheck.${field} must be a whole number`,
+            );
+          }
+        }
+
+        if (hc.retries !== undefined && hc.retries < 1) {
+          throw new Error(
+            `Component '${label}': healthCheck.retries must be at least 1`,
+          );
+        }
+      }
+
       // Resolve IDs: read from the env var named in orgIdEnv / projectIdEnv
       component.vercel.orgId = resolveId(component.vercel, "orgId", label);
       component.vercel.projectId = resolveId(

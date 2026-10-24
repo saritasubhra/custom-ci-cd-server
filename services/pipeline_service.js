@@ -2,7 +2,7 @@
  * Custom modules
  */
 import { syncRepo, detectChangedFiles } from "./git_service.js";
-import { deployToVercel } from "./vercel_service.js";
+import { deployComponent } from "./deploy_service.js";
 import { getChangedComponents } from "../utils/pathMatcher.js";
 import { updateRun, updateComponent } from "../store/runs.js";
 
@@ -24,7 +24,8 @@ const enqueue = (key, task) => {
 
 /**
  * Runs the pipeline for one push. Never throws: failures are saved on the run.
- * Step 4: sync code → detect changed components → deploy each to Vercel.
+ * Step 5: sync code → detect changed components → deploy each to Vercel →
+ * health check → roll back if unhealthy.
  * @param {Object} project - Project config
  * @param {Object} push - { commitSha, before, commits, cloneUrl }
  */
@@ -76,7 +77,7 @@ export const runPipeline = (project, push) =>
 
       // 3. Deploy each changed component.
       // They are separate Vercel projects, so one failing doesn't stop the others.
-      let failed = 0;
+      let problems = 0;
 
       for (const component of changed) {
         const id = `${project.name}/${component.name}`;
@@ -84,31 +85,32 @@ export const runPipeline = (project, push) =>
           status: "deploying",
         });
 
-        try {
-          console.log(`[Deploy] ${id} deploying to Vercel...`);
-          const url = await deployToVercel(project, component);
+        console.log(`[Deploy] ${id} deploying to Vercel...`);
+        const result = await deployComponent(project, component, commitSha);
 
-          updateComponent(project.name, commitSha, component.name, {
-            status: "deployed",
-            url,
-          });
-          console.log(`[Deploy] ✓ ${id} deployed${url ? ` → ${url}` : ""}`);
-        } catch (error) {
-          failed++;
-          updateComponent(project.name, commitSha, component.name, {
-            status: "failed",
-            error: error.message,
-          });
-          console.error(
-            `[Deploy] ✗ ${id} failed at ${error.stage || "unknown"}: ${error.message}`,
+        updateComponent(project.name, commitSha, component.name, {
+          status: result.status,
+          url: result.url || null,
+          error: result.status === "deployed" ? null : result.message,
+        });
+
+        if (result.status === "deployed") {
+          console.log(
+            `[Deploy] ✓ ${id} deployed${result.url ? ` → ${result.url}` : ""}`,
           );
+        } else {
+          problems++;
+          console.error(`[Deploy] ✗ ${id} ${result.status}: ${result.message}`);
         }
       }
 
       updateRun(project.name, commitSha, {
-        status: failed > 0 ? "failure" : "success",
+        status: problems > 0 ? "failure" : "success",
         finishedAt: new Date().toISOString(),
-        error: failed > 0 ? `${failed} component(s) failed to deploy` : null,
+        error:
+          problems > 0
+            ? `${problems} component(s) did not deploy cleanly`
+            : null,
       });
     } catch (error) {
       console.error(
