@@ -80,31 +80,9 @@ app.get("/", (_, res) => {
     ? "This is a live preview. Real deployments run when the server is started on a machine with git and the Vercel CLI."
     : "Listening for GitHub push webhooks.";
 
-  res.status(200).send(`<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Custom CI/CD Server</title>
-  <style>
-    body { font-family: system-ui, sans-serif; background: #0f172a; color: #e2e8f0;
-           display: grid; place-items: center; min-height: 100vh; margin: 0; padding: 16px; }
-    main { max-width: 480px; text-align: center; }
-    .dot { display: inline-block; width: 12px; height: 12px; border-radius: 50%;
-           background: #22c55e; margin-right: 8px; }
-    h1 { font-size: 1.5rem; }
-    p { color: #94a3b8; line-height: 1.5; }
-    a { color: #38bdf8; }
-  </style>
-</head>
-<body>
-  <main>
-    <h1><span class="dot"></span>CI/CD server is running</h1>
-    <p>${note}</p>
-    <p><a href="/health">/health</a></p>
-  </main>
-</body>
-</html>`);
+  res
+    .status(200)
+    .json({ success: true, message: "CI/CD server is running..." });
 });
 
 /**
