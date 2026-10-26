@@ -15,20 +15,45 @@ import { createRun, getRun } from "./store/runs.js";
 /**
  * Configurations (validated at startup)
  */
-const config = loadConfig();
+// On Vercel, this server only shows a status page (it cannot run deployments there)
+const IS_HOSTED_DEMO = Boolean(process.env.VERCEL);
 
-if (!process.env.VERCEL_TOKEN) {
-  console.warn(
-    "[Startup] VERCEL_TOKEN is not set in .env, deployments will fail",
-  );
+let config = null;
+let configError = null;
+
+if (IS_HOSTED_DEMO) {
+  configError =
+    "Demo mode: deployments only run when the server is started locally";
+} else {
+  try {
+    config = loadConfig();
+  } catch (error) {
+    configError = error.message;
+  }
 }
 
-// Notifications are optional: the deploy works without them
-if (!process.env.GITHUB_TOKEN) {
-  console.log("[Startup] GITHUB_TOKEN is not set: no ✅/❌ on GitHub commits");
-}
-if (!process.env.TELEGRAM_BOT_TOKEN || !process.env.TELEGRAM_CHAT_ID) {
-  console.log("[Startup] Telegram is not set up: no Telegram messages");
+if (!IS_HOSTED_DEMO) {
+  if (configError) {
+    // Locally, a broken config should stop the server so you notice it
+    console.error(`[Startup] ${configError}`);
+    process.exit(1);
+  }
+
+  if (!process.env.VERCEL_TOKEN) {
+    console.warn(
+      "[Startup] VERCEL_TOKEN is not set in .env, deployments will fail",
+    );
+  }
+
+  // Notifications are optional: the deploy works without them
+  if (!process.env.GITHUB_TOKEN) {
+    console.log(
+      "[Startup] GITHUB_TOKEN is not set: no ✅/❌ on GitHub commits",
+    );
+  }
+  if (!process.env.TELEGRAM_BOT_TOKEN || !process.env.TELEGRAM_CHAT_ID) {
+    console.log("[Startup] Telegram is not set up: no Telegram messages");
+  }
 }
 
 const app = express();
@@ -47,6 +72,42 @@ app.use(
 );
 
 /**
+ * Home page
+ * A small status page so visitors see that the server is up
+ */
+app.get("/", (_, res) => {
+  const note = IS_HOSTED_DEMO
+    ? "This is a live preview. Real deployments run when the server is started on a machine with git and the Vercel CLI."
+    : "Listening for GitHub push webhooks.";
+
+  res.status(200).send(`<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Custom CI/CD Server</title>
+  <style>
+    body { font-family: system-ui, sans-serif; background: #0f172a; color: #e2e8f0;
+           display: grid; place-items: center; min-height: 100vh; margin: 0; padding: 16px; }
+    main { max-width: 480px; text-align: center; }
+    .dot { display: inline-block; width: 12px; height: 12px; border-radius: 50%;
+           background: #22c55e; margin-right: 8px; }
+    h1 { font-size: 1.5rem; }
+    p { color: #94a3b8; line-height: 1.5; }
+    a { color: #38bdf8; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1><span class="dot"></span>CI/CD server is running</h1>
+    <p>${note}</p>
+    <p><a href="/health">/health</a></p>
+  </main>
+</body>
+</html>`);
+});
+
+/**
  * Health Check endpoint
  * Used to confirm the CI/CD server itself is running
  */
@@ -54,7 +115,8 @@ app.get("/health", (_, res) => {
   res.status(200).json({
     status: "OK",
     success: true,
-    message: "Server is healthy",
+    message: "CI/CD server is running",
+    mode: IS_HOSTED_DEMO ? "demo" : "live",
     timestamp: new Date().toISOString(),
   });
 });
@@ -63,61 +125,71 @@ app.get("/health", (_, res) => {
  * GitHub Webhook endpoint
  * Verify → match project → record a run → start the pipeline
  */
-app.post("/webhook/github", verifySignature, (req, res) => {
-  const event = req.headers["x-github-event"];
+app.post(
+  "/webhook/github",
+  (req, res, next) => {
+    if (!config) {
+      return res.status(503).json({ success: false, message: configError });
+    }
+    next();
+  },
+  verifySignature,
+  (req, res) => {
+    const event = req.headers["x-github-event"];
 
-  // GitHub sends a "ping" when the webhook is first created
-  if (event === "ping") return res.status(200).send("pong");
+    // GitHub sends a "ping" when the webhook is first created
+    if (event === "ping") return res.status(200).send("pong");
 
-  // Only push events trigger deployments
-  if (event !== "push") return res.status(200).send("Ignored");
+    // Only push events trigger deployments
+    if (event !== "push") return res.status(200).send("Ignored");
 
-  // Reply right away; the pipeline continues in the background
-  res.status(200).send("OK");
+    // Reply right away; the pipeline continues in the background
+    res.status(200).send("OK");
 
-  const body = req.body || {};
-  const repo = body.repository?.full_name;
-  const branch = body.ref?.replace("refs/heads/", "");
-  const commitSha = body.after;
+    const body = req.body || {};
+    const repo = body.repository?.full_name;
+    const branch = body.ref?.replace("refs/heads/", "");
+    const commitSha = body.after;
 
-  // Find the project that matches this repo and branch
-  const project = config.projects.find(
-    (p) => p.repository === repo && p.branch === branch,
-  );
-
-  if (!project || !commitSha) {
-    console.log(
-      `[Webhook] No matching project for ${repo}@${branch}, ignoring`,
+    // Find the project that matches this repo and branch
+    const project = config.projects.find(
+      (p) => p.repository === repo && p.branch === branch,
     );
-    return;
-  }
 
-  // A deleted branch has an all-zero "after" SHA, nothing to deploy
-  if (/^0+$/.test(commitSha)) {
-    console.log(`[Webhook] Branch ${branch} was deleted, ignoring`);
-    return;
-  }
+    if (!project || !commitSha) {
+      console.log(
+        `[Webhook] No matching project for ${repo}@${branch}, ignoring`,
+      );
+      return;
+    }
 
-  console.log(
-    `[Webhook] Matched project '${project.name}' (${repo}@${branch}) commit ${commitSha.slice(0, 7)}`,
-  );
+    // A deleted branch has an all-zero "after" SHA, nothing to deploy
+    if (/^0+$/.test(commitSha)) {
+      console.log(`[Webhook] Branch ${branch} was deleted, ignoring`);
+      return;
+    }
 
-  createRun({
-    project: project.name,
-    repository: repo,
-    branch,
-    commitSha,
-    commitMessage: body.head_commit?.message,
-    commitAuthor: body.head_commit?.author?.name,
-  });
+    console.log(
+      `[Webhook] Matched project '${project.name}' (${repo}@${branch}) commit ${commitSha.slice(0, 7)}`,
+    );
 
-  runPipeline(project, {
-    commitSha,
-    before: body.before,
-    commits: body.commits || [],
-    cloneUrl: body.repository?.clone_url,
-  });
-});
+    createRun({
+      project: project.name,
+      repository: repo,
+      branch,
+      commitSha,
+      commitMessage: body.head_commit?.message,
+      commitAuthor: body.head_commit?.author?.name,
+    });
+
+    runPipeline(project, {
+      commitSha,
+      before: body.before,
+      commits: body.commits || [],
+      cloneUrl: body.repository?.clone_url,
+    });
+  },
+);
 
 /**
  * Get Run Details endpoint
@@ -133,4 +205,11 @@ app.get("/runs/:project/:sha", (req, res) => {
   res.status(200).json({ success: true, ...run });
 });
 
-app.listen(PORT, () => console.log(`CI/CD Server is running on PORT ${PORT}`));
+// Locally: listen on a port. On Vercel: export the app and Vercel serves it.
+if (!IS_HOSTED_DEMO) {
+  app.listen(PORT, () =>
+    console.log(`CI/CD Server is running on PORT ${PORT}`),
+  );
+}
+
+export default app;
