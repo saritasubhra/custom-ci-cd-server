@@ -23,6 +23,14 @@ if (!process.env.VERCEL_TOKEN) {
   );
 }
 
+// Notifications are optional: the deploy works without them
+if (!process.env.GITHUB_TOKEN) {
+  console.log("[Startup] GITHUB_TOKEN is not set: no ✅/❌ on GitHub commits");
+}
+if (!process.env.TELEGRAM_BOT_TOKEN || !process.env.TELEGRAM_CHAT_ID) {
+  console.log("[Startup] Telegram is not set up: no Telegram messages");
+}
+
 const app = express();
 const PORT = process.env.PORT || 5001;
 
@@ -42,11 +50,11 @@ app.use(
  * Health Check endpoint
  * Used to confirm the CI/CD server itself is running
  */
-app.get("/", (_, res) => {
+app.get("/health", (_, res) => {
   res.status(200).json({
     status: "OK",
     success: true,
-    message: "Server is running",
+    message: "Server is healthy",
     timestamp: new Date().toISOString(),
   });
 });

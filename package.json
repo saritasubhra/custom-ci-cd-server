@@ -6,7 +6,9 @@
   "type": "module",
   "scripts": {
     "start": "node index.js",
-    "dev": "node --watch index.js"
+    "dev": "node --watch index.js",
+    "notify:test": "node scripts/notify_test.js",
+    "notify:chatid": "node scripts/notify_test.js chatid"
   },
   "license": "ISC",
   "dependencies": {
